@@ -1,0 +1,322 @@
+#───────────────────────────────────────────────────────────────────────────────
+# Description:
+#───────────────────────────────────────────────────────────────────────────────
+# View to display shopping-list and buttons to add items based on categories
+#
+#───────────────────────────────────────────────────────────────────────────────
+# Custom components required:
+#───────────────────────────────────────────────────────────────────────────────
+# - Mushroom cards    https://github.com/piitaya/lovelace-mushroom
+# - Button card       https://github.com/custom-cards/button-card
+# - Auto entities     https://github.com/thomasloven/lovelace-auto-entities
+# - layout-card       https://github.com/thomasloven/lovelace-layout-card
+# - card_mod          https://github.com/thomasloven/lovelace-card-mod
+#───────────────────────────────────────────────────────────────────────────────
+title: Indkøbsliste
+path: shopping
+icon: mdi:cart-variant
+subview: true
+cards:
+  - type: custom:mushroom-chips-card
+    chips:
+      - type: back
+      - type: template
+        icon: ""
+        content: Indkøbsliste ({{states(entity)}})
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: transparent;
+              --chip-font-size: 25px;
+              --chip-border-radius: 0%;
+              box-shadow: none !important;
+              }
+        entity: todo.indkobsliste
+    view_layout:
+      grid-area: header
+  - display_order: none
+    type: todo-list
+    entity: todo.indkobsliste
+    view_layout:
+      grid-area: main
+    card_mod:
+      style:
+        .: |
+          ha-card.type-todo-list div.header {
+            display: none;
+          }
+          ha-card.type-todo-list div.divider {
+            display: none;
+          }
+          ha-card.type-todo-list .completed {
+            display: none;
+          }
+          ha-check-list-item {
+            min-height: 38px !important;
+            font-family: URW Chancery L, cursive;
+            font-style: italic;
+            font-weight: bold;
+            border-bottom: 0.5px dashed  grey;
+            }
+          ha-card {
+            background:
+                url('/local/backgrounds/note_paper2.jpg') center;
+            background-size: 799px 533px;
+            --mdc-typography-subtitle1-font-size: 22px;
+            background-color: rgb(246, 247, 183);
+            border: 1px solid black;
+          }
+  - type: vertical-stack
+    cards:
+      - type: custom:mushroom-chips-card
+        chips:
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: input_select.shopping_list_category_selection
+                state_not: main
+            chip:
+              type: template
+              card_mod:
+                style: |
+                  ha-card {
+                    box-shadow: 0px 2px 5px 0px rgba(0,0,0,0.8) !important;
+                    --chip-background: white;
+                    --chip-border-radius: 50%;
+                  }
+              icon: mdi:arrow-left
+              tap_action:
+                action: perform-action
+                perform_action: input_select.select_option
+                target:
+                  entity_id: input_select.shopping_list_category_selection
+                data:
+                  option: main
+          - type: template
+            icon: ""
+            content: >
+              {% set
+              cat=states.input_select.shopping_list_category_selection.state %}
+              {% if cat=='main' %} Vælg kategori {% endif %} {% if
+              cat=='vegetables' %} Frugt & Grønt {% endif %} {% if cat=='bakery'
+              %} Brød & Bager {% endif %} {% if cat=='meat' %} Kød & Pålæg {%
+              endif %} {% if cat=='dairy' %} Mejeri {% endif %} {% if
+              cat=='frozen' %} Frost {% endif %} {% if cat=='cans' %} Kolonial
+              {% endif %} {% if cat=='beverages' %} Drikkevarer {% endif %} {%
+              if cat=='hygiene' %} Rengøring & Pleje {% endif %} {% if
+              cat=='sweets' %} Slik & Chips {% endif %} {% if cat=='other' %}
+              Øvrige {% endif %} {% if cat=='mealplan' %} Ingredienser fra ugens
+              madplan {% endif %} {% if cat=='favorites' %} Favorit indkøb {%
+              endif %}
+            tap_action:
+              action: perform-action
+              perform_action: input_select.select_option
+              target:
+                entity_id: input_select.shopping_list_category_selection
+              data:
+                option: main
+        card_mod:
+          style: |
+            ha-card {
+              --chip-background: transparent;
+              --chip-font-size: 25px;
+              --chip-border-radius: 0%;
+              box-shadow: none !important;
+              }
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.shopping_list_category_selection
+            state: main
+        card:
+          square: true
+          type: grid
+          cards:
+            - type: custom:button-card
+              name: Fra Madplan
+              entity_picture: /local/assets/shopping-list-icons/categories/mealplan.png
+              template: shopping_list_category
+              variables:
+                category: mealplan
+            - type: custom:button-card
+              name: Favoritter
+              entity_picture: /local/assets/shopping-list-icons/categories/favorites.png
+              template: shopping_list_category
+              variables:
+                category: favorites
+            - type: custom:button-card
+              name: Frugt & Grønt
+              entity_picture: /local/assets/shopping-list-icons/categories/vegetables1.png
+              template: shopping_list_category
+              variables:
+                category: vegetables
+            - type: custom:button-card
+              name: Brød og bager
+              entity_picture: /local/assets/shopping-list-icons/categories/bakery1.png
+              template: shopping_list_category
+              variables:
+                category: bakery
+            - type: custom:button-card
+              name: Kød & pålæg
+              entity_picture: /local/assets/shopping-list-icons/categories/meat.png
+              template: shopping_list_category
+              variables:
+                category: meat
+            - type: custom:button-card
+              name: Mejeri
+              entity_picture: /local/assets/shopping-list-icons/categories/dairy.png
+              template: shopping_list_category
+              variables:
+                category: dairy
+            - type: custom:button-card
+              name: Frost
+              entity_picture: /local/assets/shopping-list-icons/categories/frost2.png
+              template: shopping_list_category
+              variables:
+                category: frozen
+            - type: custom:button-card
+              name: Kolonial
+              entity_picture: /local/assets/shopping-list-icons/categories/cans.png
+              template: shopping_list_category
+              variables:
+                category: cans
+            - type: custom:button-card
+              name: Drikkevarer
+              entity_picture: /local/assets/shopping-list-icons/categories/beverages.png
+              template: shopping_list_category
+              variables:
+                category: beverages
+            - type: custom:button-card
+              name: Rengøring & Pleje
+              entity_picture: /local/assets/shopping-list-icons/categories/hygiene.png
+              template: shopping_list_category
+              variables:
+                category: hygiene
+            - type: custom:button-card
+              name: Slik & Chips
+              entity_picture: /local/assets/shopping-list-icons/categories/sweets.png
+              template: shopping_list_category
+              variables:
+                category: sweets
+            - type: custom:button-card
+              name: Øvrige
+              entity_picture: /local/assets/shopping-list-icons/categories/misc2.png
+              template: shopping_list_category
+              variables:
+                category: other
+          columns: 4
+      - type: custom:auto-entities
+        filter:
+          template: |
+
+            {% set ns = namespace(result = [], categories = {}, items = []) %}
+            {% set ns.categories = 
+              {
+                "favorites": ["Agurk","Banan","Cherrytomater","Cola","Chips","Morgenboller","Mælk","Ostehaps","Rugbrød","Snackpølser","Toastbrød"],
+                "vegetables": ["Agurk","Ananas","Appelsin","Avokado","Bagekartofler","Banan","Basilikum","Blandet salat","Blomkål","Blåbær","Broccoli","Champignon","Cherrytomater","Chili","Citron","Græskar","Grønne bønner","Gulerødder","Hindbær","Hvidløg","Ingefær","Jordbær","Kartofler","Klementiner","Kiwi","Løg","Majskolber","Peberfrugt","Pærer","Rødkål","Rødløg","Salat","Snack peberfrugt","Spidskål","Spinat","Squash","Søde kartofler","Tomater","Vandmelon","Æbler"],
+                "bakery": ["Burger boller","Cookies","Digestive kiks","Flute", "Kiks","Knækbrød","Marie kiks","Morgenboller","Naanbrød","Pitabrød","Pølsebrød","Riskiks","Rugbrød","Tarteletter","Toastbrød"],
+                "meat": ["Bacon","Bøffer","Cocktailpølser","Flankesteak","Flæskesteg","Frikadeller","Frisk pasta","Hakket kalv og flæsk","Hakket kylling","Hakket oksekød","Humus","Kylling filet","Kyllinge lår","Kød pølse","Leverpostej","Makrel salat","Pepperoni","Pizza dej","Pølser","Pålæg","Rullepølse","Skinke strimmel","Skinkepålæg","Snackpølser","Soltørret tomat","Spareribs","Spegepølse","Svine mørbrad","Tapas","Æggesalat"],
+                "dairy": ["Creme fraiche","Feta","Græsk yoghurt","Gær","Madlavningsfløde","Mælk","Mælkesnitter","Ostehaps","Parmesanost","Piskefløde","Revet ost","Risengrød","Skyr","Smør","Tzatziki","Yoghurt","Æg","Æggeblommer"],
+                "frozen": ["Burgerbøffer","Edamame bønner","Flutes","Grønne bønner frost","Hindbær frost","Is","Kebab","Majs frost","Nuggets","Pizza","Pommes frites","Ærter frost"],
+                "cans": ["Ananas dåse","Baked beans","Basmatiris","Chili bønner","Dåse Majs","Eddike","Flormelis","Groft salt","Græskarkerner","Havregryn","Heinz ketchup","Honning","Hvedemel","Jasmin ris","Karry paste","Kidney bønner","Kokosmælk","Kokosmel","Lasagneplader","Mango chutney","Morney sovs","Nudler","Oliven","Olivenolie","Ost toast","Pandekager","Parboiled ris","Pasta","Pesto","Remoulade","Riskiks","Rosiner","Salsa","Smoothies","Sovs","Spaghetti","Sukker","Svine bouillon","Syltede agurker","Sennep","Tomat passata","Tomat puré","Tortilla","Tun i vand","Østersauce"],
+                "beverages": ["Appelsin Juice","Capri Sun Juice","Cola","Gløgg","Hvidvin","Hvidtøl","Iste","Prosecco","Rødvin","Saftevand","Sodavand","Æble Juice","Øl"],
+                "hygiene": ["Bagepapir","Body shampoo","Deodorant","Kleenex","Køkkenrulle","Opvaskemiddel","Panodil","Plaster","Shampoo","Skraldeposer","Tandpasta","Tandpasta børn","Toiletpapir","Vatpinde","Vådservietter"],
+                "sweets": ["Chips","Chokolade","Nachos","Peanuts","Popcorn","Saltstænger","Skumfiduser","Slik"],
+                "other": ["Batterier","Servietter","Gas ombytning"]
+              }
+            %}
+            {% for cat in ns.categories %} 
+              {% set ns.items = [] %}
+              {% for item in ns.categories[cat] %}
+                  {% set ns.items = ns.items + [
+                    {
+                        "type": "custom:button-card",
+                        "template": "shopping_list_card",
+                        "variables":
+                        {
+                          "category": cat,
+                          "name": item,
+                        },
+                    }
+                  ]%}
+              {%endfor%}
+            {% set ns.result = ns.result + [
+                      { "type": "conditional",
+                        "conditions": [
+                          {
+                            "condition": "state",
+                            "entity": "input_select.shopping_list_category_selection",
+                            "state": cat
+                          }
+                        ],
+                      "card":
+                        {
+                        "type": "custom:layout-card",
+                        "layout_type": "grid",
+                        "layout":
+                        {
+                          "grid-template-columns": "20% 20% 20% 20% 20%",
+                          "grid-template-rows": "auto",
+                        },
+                        "cards": ns.items
+                      },
+                  }
+            ]%}
+            {% endfor %}
+            {{ns.result}}
+        card_param: cards
+        card:
+          type: horizontal-stack
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.shopping_list_category_selection
+            state_not: main
+          - condition: state
+            entity: input_select.shopping_list_category_selection
+            state_not: mealplan
+        card:
+          type: custom:button-card
+          name: Tilbage til oversigt
+          icon: mdi:backburger
+          layout: icon_name
+          show_icon: true
+          styles:
+            name:
+              - justify-self: left
+            card:
+              - height: 70px
+                padding: 0px
+          tap_action:
+            action: perform-action
+            perform_action: input_select.select_option
+            data:
+              option: main
+            target:
+              entity_id: input_select.shopping_list_category_selection
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: input_select.shopping_list_category_selection
+            state: mealplan
+        card:
+          type: custom:button-card
+          name: Test - opskrifter
+          tap_action:
+            action: perform-action
+            perform_action: input_select.select_option
+            data:
+              option: main
+            target:
+              entity_id: input_select.shopping_list_category_selection
+    view_layout:
+      grid-area: sidebar
+layout:
+  margin: 18px 27px 0px 27px
+  grid-template-columns: auto 17px 70%
+  grid-template-rows: auto
+  grid-template-areas: |
+    "header header header"
+    "main . sidebar"
+    "footer footer footer"
+type: custom:grid-layout
