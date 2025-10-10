@@ -3,7 +3,9 @@
 #
 # Created and maintained by DykandDK (github.com/DykandDK/)
 #
+# ==============================================================================
 # Revision History:
+# ==============================================================================
 # - 2023/09/30 - First version
 # - 2024/07/24 - Updated automation with changes to Easee integration service
 #                calls by changing currentPX to to current_px
@@ -12,6 +14,11 @@
 # - 2025/02/15 - Updated "solar_control_house_battery_target_soc" template
 #                and fixed syntax errors in automations. Added new automation
 #                to change EV Charging planned finish time during the day
+# - 2025/05/01 - Added new automation to allow selling in the morning at the
+#                best prices if estimated production exceeds defing minimum and
+#                house battery SOC is above defined threshold
+# - 2025/10/11 - Updated sensors to work with energy prices in 15 minute
+#                intervals
 ################################################################################
 
 #───────────────────────────────────────────────────────────────────────────────
@@ -46,6 +53,27 @@ input_boolean:
   solar_control_optimize_solar_selling:
     name: Enable automation to optimize solar selling
     icon: mdi:auto-fix
+
+  #─────────────────────────────────────────────────────────────────────────────
+  # Switch to toggle automatic grid charging of house battery based on expected
+  # solar production and known electric prices.
+  #─────────────────────────────────────────────────────────────────────────────
+  solar_control_house_battery_auto_grid_charging:
+    name: Automatically charge house battery from grid
+    icon: mdi:home-lightning-bolt-outline
+
+input_select:
+  #─────────────────────────────────────────────────────────────────────────────
+  # Select EV charging mode
+  #─────────────────────────────────────────────────────────────────────────────
+  solar_control_ev_charge_mode:
+    name: Select EV charging mode
+    icon: mdi:ev-station
+    options:
+      - solar
+      - smart
+      - manual
+      - auto
 
 input_number:
   #─────────────────────────────────────────────────────────────────────────────
@@ -149,6 +177,45 @@ input_number:
     step: 1
     mode: box
 
+  #─────────────────────────────────────────────────────────────────────────────
+  # SOC limit to disable solar selling
+  #─────────────────────────────────────────────────────────────────────────────
+  solar_control_house_battery_minimum_soc_for_selling:
+    name: Minimum SOC to disable selling
+    icon: mdi:battery-charging-20
+    unit_of_measurement: "%"
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+
+  solar_control_house_battery_minimum_soc_for_selling_evening:
+    name: Minimum SOC to disable selling before midnight
+    icon: mdi:battery-charging-60
+    unit_of_measurement: "%"
+    min: 0
+    max: 100
+    step: 1
+    mode: box
+
+input_datetime:
+  #─────────────────────────────────────────────────────────────────────────────
+  # Date and time for allowing battery charging
+  #─────────────────────────────────────────────────────────────────────────────
+  solar_control_battery_charge_start:
+    name: Do not charge battery before
+    icon: mdi:clock-start
+    has_date: true
+    has_time: true
+  #─────────────────────────────────────────────────────────────────────────────
+  # Date and time for disabling battery charging
+  #─────────────────────────────────────────────────────────────────────────────
+  solar_control_battery_charge_stop:
+    name: Do not charge battery after
+    icon: mdi:clock-end
+    has_date: true
+    has_time: true
+
 #───────────────────────────────────────────────────────────────────────────────
 # TEMPLATES
 #───────────────────────────────────────────────────────────────────────────────
@@ -157,6 +224,144 @@ input_number:
 #───────────────────────────────────────────────────────────────────────────────
 template:
   - sensor:
+      #─────────────────────────────────────────────────────────────────────────
+      # This template will calculate the hourly average enery price based on the
+      # electricity prices provided by the Energi Data Service integration
+      #─────────────────────────────────────────────────────────────────────────
+      - name: "Solar Control - Hourly average energy prices"
+        unique_id: solar_control_average_hourly_energy_prices
+        icon: mdi:cash
+        state: >
+          {{ states('sensor.energi_data_service') }}
+        attributes:
+          unit: "kWh"
+          currency: "DKK"
+          today: >
+            {#──────────────────────────────────────────────────────────────────── 
+            CONFIGURATION
+            ──────────────────────────────────────────────────────────────────────
+            Change name of sensor with electricity prices provided by the Energi 
+            Data Service integration
+            ────────────────────────────────────────────────────────────────────#}
+            {% set eds = "sensor.energi_data_service" -%}
+            {#──────────────────────────────────────────────────────────────────── 
+            END OF CONFIGURATION
+            ────────────────────────────────────────────────────────────────────#}
+            {% set prices = state_attr(eds, "today") %}
+            {% set ns = namespace(prices = []) -%}
+            {% set hourly_averages = [] %}
+            {% for i in range(0, prices | length, 4) %}
+                {% set hour_slice = prices[i:i+4] %}
+                {% set ns.sum = 0 %}
+                {% for price in hour_slice %}
+                    {% set ns.sum = ns.sum + price %}
+                {% endfor %}
+                {% set average = ns.sum / hour_slice | length %}
+                {% set ns.prices = ns.prices + [average] %} 
+            {% endfor %}
+            {{ ns.prices }}
+          tomorrow: >
+            {#──────────────────────────────────────────────────────────────────── 
+            CONFIGURATION
+            ──────────────────────────────────────────────────────────────────────
+            Change name of sensor with electricity prices provided by the Energi 
+            Data Service integration
+            ────────────────────────────────────────────────────────────────────#}
+            {% set eds = "sensor.energi_data_service" -%}
+            {#──────────────────────────────────────────────────────────────────── 
+            END OF CONFIGURATION
+            ────────────────────────────────────────────────────────────────────#}
+            {% set prices = state_attr(eds, "tomorrow") %}
+            {% set ns = namespace(prices = []) -%}
+            {% if state_attr(eds,"tomorrow_valid")==true %}
+              {% set hourly_averages = [] %}
+              {% for i in range(0, prices | length, 4) %}
+                  {% set hour_slice = prices[i:i+4] %}
+                  {% set ns.sum = 0 %}
+                  {% for price in hour_slice %}
+                      {% set ns.sum = ns.sum + price %}
+                  {% endfor %}
+                  {% set average = ns.sum / hour_slice | length %}
+                  {% set ns.prices = ns.prices + [average] %} 
+              {% endfor %}
+              {{ ns.prices }}
+            {% else %}
+              {{ prices }}
+            {% endif %}
+          tomorrow_valid: >
+            {{ state_attr("sensor.energi_data_service","tomorrow_valid") }}
+          current_price: >
+            {{ this.attributes.today[now().hour] | default(0) }}
+
+      #─────────────────────────────────────────────────────────────────────────
+      # This template will calculate the hourly average selling price based on
+      # the electricity prices provided by the Energi Data Service integration
+      #─────────────────────────────────────────────────────────────────────────
+      - name: "Solar Control - Hourly average selling prices"
+        unique_id: solar_control_average_hourly_selling_prices
+        icon: mdi:cash
+        state: >
+          {{ states('sensor.eksportpriser') }}
+        attributes:
+          unit: "kWh"
+          currency: "DKK"
+          today: >
+            {#──────────────────────────────────────────────────────────────────── 
+            CONFIGURATION
+            ──────────────────────────────────────────────────────────────────────
+            Change name of sensor with electricity prices provided by the Energi 
+            Data Service integration
+            ────────────────────────────────────────────────────────────────────#}
+            {% set eds = "sensor.eksportpriser" -%}
+            {#──────────────────────────────────────────────────────────────────── 
+            END OF CONFIGURATION
+            ────────────────────────────────────────────────────────────────────#}
+            {% set prices = state_attr(eds, "today") %}
+            {% set ns = namespace(prices = []) -%}
+            {% set hourly_averages = [] %}
+            {% for i in range(0, prices | length, 4) %}
+                {% set hour_slice = prices[i:i+4] %}
+                {% set ns.sum = 0 %}
+                {% for price in hour_slice %}
+                    {% set ns.sum = ns.sum + price %}
+                {% endfor %}
+                {% set average = ns.sum / hour_slice | length %}
+                {% set ns.prices = ns.prices + [average] %} 
+            {% endfor %}
+            {{ ns.prices }}
+          tomorrow: >
+            {#──────────────────────────────────────────────────────────────────── 
+            CONFIGURATION
+            ──────────────────────────────────────────────────────────────────────
+            Change name of sensor with electricity prices provided by the Energi 
+            Data Service integration
+            ────────────────────────────────────────────────────────────────────#}
+            {% set eds = "sensor.eksportpriser" -%}
+            {#──────────────────────────────────────────────────────────────────── 
+            END OF CONFIGURATION
+            ────────────────────────────────────────────────────────────────────#}
+            {% set prices = state_attr(eds, "tomorrow") %}
+            {% set ns = namespace(prices = []) -%}
+            {% if state_attr(eds,"tomorrow_valid")==true %}
+              {% set hourly_averages = [] %}
+              {% for i in range(0, prices | length, 4) %}
+                  {% set hour_slice = prices[i:i+4] %}
+                  {% set ns.sum = 0 %}
+                  {% for price in hour_slice %}
+                      {% set ns.sum = ns.sum + price %}
+                  {% endfor %}
+                  {% set average = ns.sum / hour_slice | length %}
+                  {% set ns.prices = ns.prices + [average] %} 
+              {% endfor %}
+              {{ ns.prices }}
+            {% else %}
+              {{ prices }}
+            {% endif %}
+          tomorrow_valid: >
+            {{ state_attr("sensor.eksportpriser","tomorrow_valid") }}
+          current_price: >
+            {{ this.attributes.today[now().hour] | default(0) }}
+
       #─────────────────────────────────────────────────────────────────────────
       # This template will calculate excess energy from solar production that
       # can be used for EV charging or other purposes.
@@ -321,7 +526,7 @@ template:
             Change name of sensor with electricity prices provided by the Energi 
             Data Service integration
             ────────────────────────────────────────────────────────────────────#}
-            {% set eds = "sensor.energi_data_service" -%}
+            {% set eds = "sensor.solar_control_hourly_average_energy_prices" -%}
             {#──────────────────────────────────────────────────────────────────── 
             END OF CONFIGURATION
             ────────────────────────────────────────────────────────────────────#}
@@ -372,10 +577,80 @@ template:
 
             {% set diffs = {"Today_00_06_vs_06_17":  "%.2f" | format(p_td_06_17_avg - p_td_00_06_avg)|float, 
                             "Today_06_17_vs_17_21":  "%.2f" | format(p_td_17_21_avg - p_td_06_17_avg)|float,  
-                            "Tomorrow_00_06_vs_06_17":  "%.2f" | format(p_tm_06_17_avg - p_tm_00_06_avg)|float } 
+                            "Today_00_06_vs_17_21":  "%.2f" | format(p_td_17_21_avg - p_td_00_06_avg)|float,
+                            "Tomorrow_00_06_vs_06_17":  "%.2f" | format(p_tm_06_17_avg - p_tm_00_06_avg)|float,
+                            "Tomorrow_00_06_vs_17_21":  "%.2f" | format(p_tm_17_21_avg - p_tm_00_06_avg)|float} 
                             %}
 
             {{ diffs }}
+
+      #─────────────────────────────────────────────────────────────────────────
+      # This template calculates this highest selling price in the morning
+      #─────────────────────────────────────────────────────────────────────────
+      - name: "Solar Control - Highest morning selling price"
+        unique_id: solar_control_high_selling_price_morning
+        icon: mdi:cash-100
+        state: "{{ this.attributes.max_hour }}"
+        device_class: timestamp
+        attributes:
+          max_hour: >
+            {% set prices = states.sensor.solar_control_hourly_average_selling_prices.attributes.today %}
+            {% set ns = namespace(items=0) %}
+            {% set ns.max_price = -1 %}
+            {% set ns.max_hour = none %}
+            {% for item in prices[7:11] %}
+                {% if item > ns.max_price %}
+                    {% set ns.max_price = item %}
+                    {% set ns.max_hour = loop.index+6 %}
+                {% endif %}
+            {% endfor %}
+            {{ ns.max_hour }}
+          max_price: >
+            {% set prices = states.sensor.solar_control_hourly_average_selling_prices.attributes.today %}
+            {% set ns = namespace(items=0) %}
+            {% set ns.max_price = -1 %}
+            {% set ns.max_hour = none %}
+            {% for item in prices[7:11] %}
+                {% if item > ns.max_price %}
+                    {% set ns.max_price = item|float %}
+                    {% set ns.max_hour = loop.index+6 %}
+                {% endif %}
+            {% endfor %}
+            {{ ns.max_price | default(0) }}
+
+      #─────────────────────────────────────────────────────────────────────────
+      # This template calculates this highest selling price in the evening
+      #─────────────────────────────────────────────────────────────────────────
+      - name: "Solar Control - Highest evening selling price"
+        unique_id: solar_control_high_selling_price_evening
+        icon: mdi:cash-100
+        state: "{{ this.attributes.max_hour }}"
+        device_class: timestamp
+        attributes:
+          max_hour: >
+            {% set prices = states.sensor.solar_control_hourly_average_selling_prices.attributes.today %}
+            {% set ns = namespace(items=0) %}
+            {% set ns.max_price = -1 %}
+            {% set ns.max_hour = none %}
+            {% for item in prices[19:21] %}
+                {% if item > ns.max_price %}
+                    {% set ns.max_price = item %}
+                    {% set ns.max_hour =  loop.index+18 %}
+                {% endif %}
+            {% endfor %}
+            {{ ns.max_hour }}
+          max_price: >
+            {% set prices = states.sensor.solar_control_hourly_average_selling_prices.attributes.today %}
+            {% set ns = namespace(items=0) %}
+            {% set ns.max_price = -1 %}
+            {% set ns.max_hour = none %}
+            {% for item in prices[19:21] %}
+                {% if item > ns.max_price %}
+                    {% set ns.max_price = item|float %}
+                    {% set ns.max_hour =  loop.index+18 %}
+                {% endif %}
+            {% endfor %}
+            {{ ns.max_price | default(0) }}
 
 #───────────────────────────────────────────────────────────────────────────────
 # AUTOMATIONS
@@ -448,6 +723,124 @@ automation:
           entity_id: switch.deyemodbus_deye_solar_sell
     mode: single
     max_exceeded: silent
+
+  #─────────────────────────────────────────────────────────────────────────────
+  # This automation enables solar selling from house battery and disables
+  # charging in the morning at the highest sales prices if the battery exceeds
+  # the defined minimum SOC and the estimated daily production is over the
+  # defined threshold.
+  #─────────────────────────────────────────────────────────────────────────────
+  - alias: "Solar control: Enable solar selling at best morning price"
+    id: solar_control_enable_solar_selling_in_morning
+    description: "This automation enables solar selling when the battery SOC is high in the morning at the best price"
+    mode: single
+    triggers:
+      - trigger: time
+        at: sensor.solar_control_highest_morning_selling_price
+    conditions:
+      - condition: state
+        entity_id: input_boolean.solar_control_optimize_solar_selling
+        state: "on"
+      - condition: numeric_state
+        entity_id: sensor.solcast_pv_forecast_forecast_today
+        above: input_number.solar_control_production_selling_limit
+      - condition: template
+        value_template: >-
+          {{ (state_attr('sensor.solar_control_highest_morning_selling_price',
+          'max_price') |float)
+          >(states('input_number.solar_control_prioritize_selling_above_price')
+          |float) }}
+      - condition: numeric_state
+        entity_id: sensor.deyemodbus_deye_battery_capacity
+        above: input_number.solar_control_house_battery_minimum_soc_for_selling
+    actions:
+      - action: select.select_option
+        data:
+          option: Selling first
+        target:
+          entity_id: select.deyemodbus_deye_limit_control_mode
+      - action: number.set_value
+        data:
+          value: "0"
+        target:
+          entity_id: number.deyemodbus_deye_maximum_battery_charge_current
+
+  #─────────────────────────────────────────────────────────────────────────────
+  # This automation enables house battery charging at low prices or when the
+  # remaining solar production of the day is below the defined threshold.
+  #─────────────────────────────────────────────────────────────────────────────
+  - alias: "Solar control: Enable battery charging after moring selling"
+    id: solar_control_enable_battery_charging_after_selling
+    description: "This automation enables battery charging again after morning selling is compleated"
+    mode: single
+    triggers:
+      - trigger: numeric_state
+        entity_id:
+          - sensor.eksportpriser
+        below: 0
+      - trigger: numeric_state
+        entity_id:
+          - sensor.solcast_pv_forecast_forecast_remaining_today
+        below: input_number.solar_control_production_selling_limit
+    conditions:
+      - condition: state
+        entity_id: input_boolean.solar_control_optimize_solar_selling
+        state: "on"
+    actions:
+      - action: number.set_value
+        data:
+          value: "100"
+        target:
+          entity_id: number.deyemodbus_deye_maximum_battery_charge_current
+
+  #─────────────────────────────────────────────────────────────────────────────
+  # This automation disables solar selling when the battery SOC reaches the
+  # minimum defined SOC in the morning
+  #─────────────────────────────────────────────────────────────────────────────
+  - alias: "Solar control: Disable solar selling at minimum SOC"
+    id: solar_control_disable_solar_selling_at_battery_min
+    description: "This automation disables export to grid when the battery SOC reaches the minimum defined SOC"
+    triggers:
+      - trigger: numeric_state
+        entity_id:
+          - sensor.deyemodbus_deye_battery_capacity
+        below: input_number.solar_control_house_battery_minimum_soc_for_selling
+    conditions:
+      - condition: state
+        entity_id: input_boolean.solar_control_optimize_solar_selling
+        state: "on"
+    actions:
+      - action: select.select_option
+        data:
+          option: Zero export to CT
+        target:
+          entity_id: select.deyemodbus_deye_limit_control_mode
+
+  #─────────────────────────────────────────────────────────────────────────────
+  # This automation disables solar selling when the battery SOC reaches the
+  # minimum defined SOC in the evening
+  #─────────────────────────────────────────────────────────────────────────────
+  - alias: "Solar control: Disable solar selling at minimum SOC in evening"
+    id: solar_control_disable_solar_selling_at_battery_min_evening
+    description: "This automation disables export to grid when the battery SOC reaches the minimum defined SOC in the evening"
+    triggers:
+      - trigger: numeric_state
+        entity_id:
+          - sensor.deyemodbus_deye_battery_capacity
+        below: input_number.solar_control_house_battery_minimum_soc_for_selling_evening
+    conditions:
+      - condition: state
+        entity_id: input_boolean.solar_control_optimize_solar_selling
+        state: "on"
+      - condition: time
+        after: "17:00:00"
+        before: "06:00:00"
+    actions:
+      - action: select.select_option
+        data:
+          option: Zero export to CT
+        target:
+          entity_id: select.deyemodbus_deye_limit_control_mode
 
   #─────────────────────────────────────────────────────────────────────────────
   # This automation enables solar selling when the current sales price is above
