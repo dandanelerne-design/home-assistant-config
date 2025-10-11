@@ -361,11 +361,11 @@ cards:
 
       {% set ns = namespace(prices = []) -%}
 
-      {% set prices = state_attr("sensor.elpriser_inkl_afgifter", "today") |
-      list + state_attr("sensor.elpriser_inkl_afgifter", "tomorrow") | list if
-      state_attr("sensor.elpriser_inkl_afgifter", "tomorrow_valid") and
-      states.sensor.elpriser_inkl_afgifter.attributes.tomorrow[0] | float >0
-      else state_attr("sensor.elpriser_inkl_afgifter", "today") -%}
+      {% set prices = state_attr("sensor.solar_control_hourly_average_energy_prices", "today") |
+      list + state_attr("sensor.solar_control_hourly_average_energy_prices", "tomorrow") | list if
+      state_attr("sensor.solar_control_hourly_average_energy_prices", "tomorrow_valid") and
+      states.sensor.solar_control_hourly_average_energy_prices.attributes.tomorrow[0] | float >0
+      else state_attr("sensor.solar_control_hourly_average_energy_prices", "today") -%}
 
       {% set forecast0 = state_attr("sensor.solcast_pv_forecast_forecast_today",
       "detailedHourly") -%}
